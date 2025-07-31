@@ -10,7 +10,11 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.schema import BaseMessage
+import google.generativeai as genai
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -98,6 +102,17 @@ class MedicalAI:
         self.api_key = os.environ.get('GOOGLE_API_KEY')
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY not found in environment variables")
+        
+        # Configure Google Generative AI
+        genai.configure(api_key=self.api_key)
+        
+        # Initialize LangChain chat model
+        self.chat_model = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            google_api_key=self.api_key,
+            temperature=0.7,
+            max_tokens=2048
+        )
 
     async def get_diagnosis(self, symptoms: List[Symptom], patient_age: int, patient_gender: str, medical_history: List[str], additional_info: str = None) -> Dict[str, Any]:
         """Get AI-powered medical diagnosis using Gemini 2.0 Flash"""
@@ -141,20 +156,17 @@ Please provide:
 Important: This is for educational/informational purposes. Always recommend consulting with healthcare professionals for proper medical evaluation and treatment."""
 
         try:
-            # Create new chat session for diagnosis
-            session_id = str(uuid.uuid4())
-            chat = LlmChat(
-                api_key=self.api_key,
-                session_id=session_id,
-                system_message="You are a professional medical AI assistant providing differential diagnosis and medical recommendations. Always emphasize the importance of professional medical consultation."
-            ).with_model("gemini", "gemini-2.0-flash")
+            # Create system message
+            system_message = SystemMessage(content="You are a professional medical AI assistant providing differential diagnosis and medical recommendations. Always emphasize the importance of professional medical consultation.")
             
-            # Send diagnosis request
-            user_message = UserMessage(text=medical_prompt)
-            response = await chat.send_message(user_message)
+            # Create human message
+            human_message = HumanMessage(content=medical_prompt)
+            
+            # Get response from LangChain
+            response = await self.chat_model.ainvoke([system_message, human_message])
             
             # Parse response for structured data
-            diagnosis_text = response
+            diagnosis_text = response.content
             
             # Extract structured information
             recommendations = []
@@ -184,7 +196,7 @@ Important: This is for educational/informational purposes. Always recommend cons
                 "recommendations": recommendations if recommendations else ["Consult with a healthcare professional", "Monitor symptoms closely", "Follow up if symptoms worsen"],
                 "severity_assessment": severity,
                 "follow_up_needed": follow_up_needed,
-                "session_id": session_id
+                "session_id": str(uuid.uuid4())
             }
             
         except Exception as e:
@@ -240,18 +252,17 @@ Please provide a helpful, empathetic response that:
 Remember: You are providing informational support, not medical diagnosis or treatment."""
 
         try:
-            # Create chat session
-            chat = LlmChat(
-                api_key=self.api_key,
-                session_id=session_id,
-                system_message="You are a helpful medical AI assistant focused on patient communication and support. Always recommend professional medical consultation."
-            ).with_model("gemini", "gemini-2.0-flash")
+            # Create system message
+            system_message = SystemMessage(content="You are a helpful medical AI assistant focused on patient communication and support. Always recommend professional medical consultation.")
             
-            user_message = UserMessage(text=medical_chat_prompt)
-            response = await chat.send_message(user_message)
+            # Create human message
+            human_message = HumanMessage(content=medical_chat_prompt)
+            
+            # Get response from LangChain
+            response = await self.chat_model.ainvoke([system_message, human_message])
             
             return {
-                "response": response,
+                "response": response.content,
                 "session_id": session_id
             }
             
