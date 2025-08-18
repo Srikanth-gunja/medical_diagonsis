@@ -8,6 +8,8 @@ const API = `${BACKEND_URL}/api`;
 function App() {
   const [currentView, setCurrentView] = useState('home');
   const [patients, setPatients] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [diagnosisResult, setDiagnosisResult] = useState(null);
   const [chatSession, setChatSession] = useState(null);
@@ -24,6 +26,20 @@ function App() {
     medical_history: []
   });
 
+  // Doctor Registration Form State
+  const [doctorForm, setDoctorForm] = useState({
+    name: '',
+    specialty: ''
+  });
+
+  // Appointment Form State
+  const [appointmentForm, setAppointmentForm] = useState({
+    patient_id: '',
+    doctor_id: '',
+    appointment_time: '',
+    reason: ''
+  });
+
   // Diagnosis Form State
   const [diagnosisForm, setDiagnosisForm] = useState({
     symptoms: [{ description: '', severity: 5, duration: '', location: '' }],
@@ -33,18 +49,26 @@ function App() {
   // Chat State
   const [chatInput, setChatInput] = useState('');
 
-  // Load patients on component mount
+  // Load initial data on component mount
   useEffect(() => {
-    loadPatients();
+    loadInitialData();
   }, []);
 
-  const loadPatients = async () => {
+  const loadInitialData = async () => {
+    setIsLoading(true);
     try {
-      const response = await axios.get(`${API}/patients`);
-      setPatients(response.data);
+      const [patientsRes, doctorsRes, appointmentsRes] = await Promise.all([
+        axios.get(`${API}/patients`),
+        axios.get(`${API}/doctors`),
+        axios.get(`${API}/appointments`)
+      ]);
+      setPatients(patientsRes.data);
+      setDoctors(doctorsRes.data);
+      setAppointments(appointmentsRes.data);
     } catch (error) {
-      console.error('Error loading patients:', error);
+      console.error('Error loading initial data:', error);
     }
+    setIsLoading(false);
   };
 
   const handlePatientSubmit = async (e) => {
@@ -65,6 +89,41 @@ function App() {
     } catch (error) {
       console.error('Error creating patient:', error);
       alert('Error registering patient. Please try again.');
+    }
+    setIsLoading(false);
+  };
+
+  const handleDoctorSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const response = await axios.post(`${API}/doctors`, doctorForm);
+      setDoctors([...doctors, response.data]);
+      setDoctorForm({ name: '', specialty: '' });
+      setCurrentView('doctors');
+      alert('Doctor registered successfully!');
+    } catch (error) {
+      console.error('Error creating doctor:', error);
+      alert('Error registering doctor. Please try again.');
+    }
+    setIsLoading(false);
+  };
+
+  const handleAppointmentSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      const response = await axios.post(`${API}/appointments`, {
+        ...appointmentForm,
+        appointment_time: new Date(appointmentForm.appointment_time).toISOString()
+      });
+      setAppointments([...appointments, response.data]);
+      setAppointmentForm({ patient_id: '', doctor_id: '', appointment_time: '', reason: '' });
+      setCurrentView('appointments');
+      alert('Appointment scheduled successfully!');
+    } catch (error) {
+      console.error('Error creating appointment:', error);
+      alert('Error scheduling appointment. Please try again.');
     }
     setIsLoading(false);
   };
@@ -194,6 +253,18 @@ function App() {
               className={`px-4 py-2 rounded-lg transition-all ${currentView === 'chat' ? 'bg-white text-blue-600' : 'hover:bg-blue-500'}`}
             >
               Chat
+            </button>
+            <button
+              onClick={() => setCurrentView('doctors')}
+              className={`px-4 py-2 rounded-lg transition-all ${currentView === 'doctors' ? 'bg-white text-blue-600' : 'hover:bg-blue-500'}`}
+            >
+              Doctors
+            </button>
+            <button
+              onClick={() => setCurrentView('appointments')}
+              className={`px-4 py-2 rounded-lg transition-all ${currentView === 'appointments' ? 'bg-white text-blue-600' : 'hover:bg-blue-500'}`}
+            >
+              Appointments
             </button>
           </div>
         </div>
@@ -691,6 +762,161 @@ function App() {
     </div>
   );
 
+  const renderDoctors = () => (
+    <div className="container mx-auto px-4 py-8">
+      <h2 className="text-3xl font-bold text-gray-800 mb-8">Doctors</h2>
+      <div className="max-w-2xl mx-auto mb-8">
+        <h3 className="text-2xl font-bold text-gray-800 mb-8">Register New Doctor</h3>
+        <form onSubmit={handleDoctorSubmit} className="bg-white p-8 rounded-xl shadow-lg">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
+              <input
+                type="text"
+                required
+                value={doctorForm.name}
+                onChange={(e) => setDoctorForm({ ...doctorForm, name: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter doctor's name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Specialty *</label>
+              <input
+                type="text"
+                required
+                value={doctorForm.specialty}
+                onChange={(e) => setDoctorForm({ ...doctorForm, specialty: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter specialty"
+              />
+            </div>
+          </div>
+          <div className="mt-8">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50"
+            >
+              {isLoading ? 'Registering...' : 'Register Doctor'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="grid gap-6">
+        {doctors.map((doctor) => (
+          <div key={doctor.id} className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all">
+            <div>
+              <h3 className="text-xl font-semibold text-gray-800">{doctor.name}</h3>
+              <p className="text-gray-600">Specialty: {doctor.specialty}</p>
+            </div>
+          </div>
+        ))}
+        {doctors.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No doctors registered yet.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderAppointments = () => (
+    <div className="container mx-auto px-4 py-8">
+      <h2 className="text-3xl font-bold text-gray-800 mb-8">Appointments</h2>
+
+      <div className="max-w-2xl mx-auto mb-8">
+        <h3 className="text-2xl font-bold text-gray-800 mb-8">Schedule New Appointment</h3>
+        <form onSubmit={handleAppointmentSubmit} className="bg-white p-8 rounded-xl shadow-lg">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Patient *</label>
+              <select
+                required
+                value={appointmentForm.patient_id}
+                onChange={(e) => setAppointmentForm({ ...appointmentForm, patient_id: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select Patient</option>
+                {patients.map(patient => (
+                  <option key={patient.id} value={patient.id}>{patient.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Doctor *</label>
+              <select
+                required
+                value={appointmentForm.doctor_id}
+                onChange={(e) => setAppointmentForm({ ...appointmentForm, doctor_id: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select Doctor</option>
+                {doctors.map(doctor => (
+                  <option key={doctor.id} value={doctor.id}>{doctor.name} ({doctor.specialty})</option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Appointment Time *</label>
+              <input
+                type="datetime-local"
+                required
+                value={appointmentForm.appointment_time}
+                onChange={(e) => setAppointmentForm({ ...appointmentForm, appointment_time: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Reason *</label>
+              <input
+                type="text"
+                required
+                value={appointmentForm.reason}
+                onChange={(e) => setAppointmentForm({ ...appointmentForm, reason: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Reason for appointment"
+              />
+            </div>
+          </div>
+          <div className="mt-8">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-purple-700 transition-all disabled:opacity-50"
+            >
+              {isLoading ? 'Scheduling...' : 'Schedule Appointment'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="grid gap-6">
+        {appointments.map((appointment) => (
+          <div key={appointment.id} className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all">
+            <div>
+              <h3 className="text-xl font-semibold text-gray-800">
+                Patient: {patients.find(p => p.id === appointment.patient_id)?.name || 'Unknown'}
+              </h3>
+              <p className="text-gray-600">
+                Doctor: {doctors.find(d => d.id === appointment.doctor_id)?.name || 'Unknown'}
+              </p>
+              <p className="text-gray-600">Time: {new Date(appointment.appointment_time).toLocaleString()}</p>
+              <p className="text-gray-600">Reason: {appointment.reason}</p>
+              <p className="text-gray-600">Status: {appointment.status}</p>
+            </div>
+          </div>
+        ))}
+        {appointments.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No appointments scheduled yet.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       {renderNavigation()}
@@ -701,6 +927,8 @@ function App() {
       {currentView === 'diagnosis' && renderDiagnosis()}
       {currentView === 'diagnosis-result' && renderDiagnosisResult()}
       {currentView === 'chat' && renderChat()}
+      {currentView === 'doctors' && renderDoctors()}
+      {currentView === 'appointments' && renderAppointments()}
     </div>
   );
 }

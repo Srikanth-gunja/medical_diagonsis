@@ -96,6 +96,32 @@ class ChatResponse(BaseModel):
     session_id: str
     ai_response: str
 
+class Doctor(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    specialty: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class DoctorCreate(BaseModel):
+    name: str
+    specialty: str
+
+class Appointment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    patient_id: str
+    doctor_id: str
+    appointment_time: datetime
+    reason: str
+    status: str  # e.g., "scheduled", "completed", "canceled"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AppointmentCreate(BaseModel):
+    patient_id: str
+    doctor_id: str
+    appointment_time: datetime
+    reason: str
+    status: str = "scheduled"
+
 # AI Medical Diagnosis System
 class MedicalAI:
     def __init__(self):
@@ -446,6 +472,131 @@ async def get_patient_chat_sessions(patient_id: str):
     except Exception as e:
         logger.error(f"Error fetching chat sessions: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch chat sessions")
+
+# Doctor Management
+@api_router.post("/doctors", response_model=Doctor)
+async def create_doctor(doctor_data: DoctorCreate):
+    """Create a new doctor record"""
+    try:
+        doctor = Doctor(**doctor_data.dict())
+        await db.doctors.insert_one(doctor.dict())
+        return doctor
+    except Exception as e:
+        logger.error(f"Error creating doctor: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create doctor")
+
+@api_router.get("/doctors", response_model=List[Doctor])
+async def get_doctors():
+    """Get all doctor records"""
+    try:
+        doctors = await db.doctors.find().to_list(100)
+        return [Doctor(**doctor) for doctor in doctors]
+    except Exception as e:
+        logger.error(f"Error fetching doctors: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch doctors")
+
+@api_router.get("/doctors/{doctor_id}", response_model=Doctor)
+async def get_doctor(doctor_id: str):
+    """Get specific doctor by ID"""
+    try:
+        doctor_doc = await db.doctors.find_one({"id": doctor_id})
+        if not doctor_doc:
+            raise HTTPException(status_code=404, detail="Doctor not found")
+        return Doctor(**doctor_doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching doctor: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch doctor")
+
+# Appointment Management
+@api_router.post("/appointments", response_model=Appointment)
+async def create_appointment(appointment_data: AppointmentCreate):
+    """Create a new appointment"""
+    try:
+        # Verify patient and doctor exist
+        patient_doc = await db.patients.find_one({"id": appointment_data.patient_id})
+        if not patient_doc:
+            raise HTTPException(status_code=404, detail=f"Patient with id {appointment_data.patient_id} not found")
+
+        doctor_doc = await db.doctors.find_one({"id": appointment_data.doctor_id})
+        if not doctor_doc:
+            raise HTTPException(status_code=404, detail=f"Doctor with id {appointment_data.doctor_id} not found")
+
+        appointment = Appointment(**appointment_data.dict())
+        await db.appointments.insert_one(appointment.dict())
+        return appointment
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating appointment: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create appointment")
+
+@api_router.get("/appointments", response_model=List[Appointment])
+async def get_appointments():
+    """Get all appointments"""
+    try:
+        appointments = await db.appointments.find().to_list(100)
+        return [Appointment(**appointment) for appointment in appointments]
+    except Exception as e:
+        logger.error(f"Error fetching appointments: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch appointments")
+
+@api_router.get("/appointments/{appointment_id}", response_model=Appointment)
+async def get_appointment(appointment_id: str):
+    """Get specific appointment by ID"""
+    try:
+        appointment_doc = await db.appointments.find_one({"id": appointment_id})
+        if not appointment_doc:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+        return Appointment(**appointment_doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching appointment: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch appointment")
+
+@api_router.put("/appointments/{appointment_id}", response_model=Appointment)
+async def update_appointment(appointment_id: str, appointment_data: AppointmentCreate):
+    """Update an appointment"""
+    try:
+        # Verify patient and doctor exist
+        patient_doc = await db.patients.find_one({"id": appointment_data.patient_id})
+        if not patient_doc:
+            raise HTTPException(status_code=404, detail=f"Patient with id {appointment_data.patient_id} not found")
+
+        doctor_doc = await db.doctors.find_one({"id": appointment_data.doctor_id})
+        if not doctor_doc:
+            raise HTTPException(status_code=404, detail=f"Doctor with id {appointment_data.doctor_id} not found")
+
+        updated_appointment = await db.appointments.find_one_and_update(
+            {"id": appointment_id},
+            {"$set": appointment_data.dict()},
+            return_document=True
+        )
+        if not updated_appointment:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+        return Appointment(**updated_appointment)
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating appointment: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update appointment")
+
+@api_router.delete("/appointments/{appointment_id}", response_model=dict)
+async def delete_appointment(appointment_id: str):
+    """Delete an appointment"""
+    try:
+        result = await db.appointments.delete_one({"id": appointment_id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+        return {"message": "Appointment deleted successfully"}
+    except HTTPException as e:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting appointment: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete appointment")
+
 
 # Include the router in the main app
 app.include_router(api_router)
